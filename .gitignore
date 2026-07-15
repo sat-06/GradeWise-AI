@@ -1,1 +1,69 @@
-test
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+.env
+.venv
+
+# Node
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+.docker/
+
+# Data
+data/raw/
+data/processed/
+*.db
+*.sqlite3
+
+# ML Models
+*.pkl
+*.joblib
+*.h5
+*.pb
+mlruns/
+wandb/
+
+# Logs
+logs/
+*.log
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Environment
+.env.local
+.env.production
+.env.development
+
+# Build artifacts
+*.tar.gz
+*.zip
+
+# OS
+Thumbs.db
