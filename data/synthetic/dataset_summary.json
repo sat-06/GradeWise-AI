@@ -1,0 +1,21 @@
+{
+  "num_grades": 10,
+  "num_steady_state_samples": 5000,
+  "num_transition_samples": 3600,
+  "num_operator_logs": 300,
+  "gsm_range": "70.0-350.0",
+  "parameters": [
+    "machine_speed",
+    "headbox_pressure",
+    "dryer_temperature",
+    "moisture_content",
+    "chemical_dosage",
+    "flow_rate",
+    "vacuum_pressure",
+    "wire_tension",
+    "press_load",
+    "stock_consistency",
+    "ambient_temperature",
+    "ambient_humidity"
+  ]
+}
