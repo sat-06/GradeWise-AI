@@ -1,0 +1,11 @@
+name,gsm_target,gsm_tolerance_min,gsm_tolerance_max
+70 GSM Copy Paper,70.0,68.0,72.0
+80 GSM Bond Paper,80.0,78.0,82.0
+90 GSM Ledger Paper,90.0,88.0,92.0
+100 GSM Cover Paper,100.0,97.0,103.0
+120 GSM Card Stock,120.0,117.0,123.0
+150 GSM Heavy Card,150.0,147.0,153.0
+200 GSM Board,200.0,196.0,204.0
+250 GSM Box Board,250.0,245.0,255.0
+300 GSM Heavy Board,300.0,294.0,306.0
+350 GSM Industrial Board,350.0,343.0,357.0
