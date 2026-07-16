@@ -25,9 +25,15 @@ class BaseRepository(Generic[ModelType]):
         return result.scalar_one_or_none()
 
     async def get_all(self, limit: int = 100, offset: int = 0) -> Sequence[ModelType]:
-        result = await self.session.execute(
-            select(self.model).limit(limit).offset(offset).order_by(self.model.created_at.desc())  # type: ignore[union-attr]
-        )
+        query = select(self.model).limit(limit).offset(offset)
+        # Use created_at if the model has it, otherwise fall back to id
+        if hasattr(self.model, "created_at"):
+            query = query.order_by(self.model.created_at.desc())
+        elif hasattr(self.model, "timestamp"):
+            query = query.order_by(self.model.timestamp.desc())
+        elif hasattr(self.model, "id"):
+            query = query.order_by(self.model.id.desc())
+        result = await self.session.execute(query)
         return result.scalars().all()
 
     async def create(self, instance: ModelType) -> ModelType:
