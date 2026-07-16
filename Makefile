@@ -1,16 +1,7 @@
-.PHONY: help up down build test lint clean seed train
+.PHONY: help dev-backend dev-frontend install seed train test lint format migrate clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-
-up: ## Start all services with Docker Compose
-	docker compose up -d
-
-down: ## Stop all services
-	docker compose down
-
-build: ## Build all Docker images
-	docker compose build
 
 dev-backend: ## Run backend in development mode
 	cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -54,7 +45,3 @@ clean: ## Clean build artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf frontend/.next frontend/node_modules
-
-docker-clean: ## Clean Docker resources
-	docker compose down -v
-	docker system prune -f
