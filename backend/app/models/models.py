@@ -74,6 +74,7 @@ class ProductionRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     current_grade = relationship("PaperGrade", foreign_keys=[current_grade_id])
     target_grade = relationship("PaperGrade", foreign_keys=[target_grade_id])
@@ -102,6 +103,7 @@ class SensorReading(Base):
     stock_consistency: Mapped[float] = mapped_column(Float, nullable=True)
     ambient_temperature: Mapped[float] = mapped_column(Float, nullable=True)
     ambient_humidity: Mapped[float] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     production_run = relationship("ProductionRun")
 
@@ -157,6 +159,7 @@ class Prediction(Base):
 
     # Input snapshot
     input_parameters: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     production_run = relationship("ProductionRun")
 
@@ -185,6 +188,7 @@ class Recommendation(Base):
     operator_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     operator_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
     modified_settings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     prediction = relationship("Prediction")
     production_run = relationship("ProductionRun")
@@ -212,6 +216,7 @@ class Alert(Base):
     acknowledged_by: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("users.id"), nullable=True)
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     production_run = relationship("ProductionRun")
 
@@ -237,6 +242,7 @@ class ModelMetadata(Base):
     mae: Mapped[float] = mapped_column(Float, nullable=False)
     r2_score: Mapped[float] = mapped_column(Float, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("model_id", "version", name="uq_model_version"),
@@ -268,3 +274,4 @@ class OperatorLog(Base):
     )
     details: Mapped[dict] = mapped_column(JSON, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
