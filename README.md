@@ -59,6 +59,32 @@ GradeWise AI combines **Predictive Analytics**, **Explainable AI**, **Prescripti
 
 ---
 
+## 🧠 ML Capabilities
+
+### Production Model Inference
+- **5-model ensemble**: Random Forest, Gradient Boosting, XGBoost, LightGBM, CatBoost
+- **Automatic best model selection** based on time-series cross-validation
+- **Graceful fallback** to heuristic predictions when no trained model is available
+- **Confidence intervals**: Every prediction includes lower and upper bounds (95% CI)
+
+### Enhanced Feature Engineering
+- Rolling statistics (mean, std, trend/slope) over multiple windows
+- Lag features for time-series awareness
+- Interaction features: moisture×GSM, dryer temperature, machine speed, pressure×flow
+- Grade transition features: GSM deviation rate, transition progress, time since start
+- Actuator response delay and calibration ratio features
+
+### Explainable AI
+- SHAP-based feature importance (TreeExplainer for tree models, KernelExplainer fallback)
+- Top contributor analysis with directional impact
+- Contextual root cause analysis per parameter
+- Human-readable decision explanations
+
+### Grade Transition Benchmarking
+- Per-transition performance metrics (80→120, 120→180, 180→100 GSM)
+- RMSE, MAE, R² estimates for each transition pair
+- Success rate, stabilization time, and waste generation tracking
+
 ## 🏗️ Architecture
 
 ```
