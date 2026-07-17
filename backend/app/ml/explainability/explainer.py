@@ -4,10 +4,13 @@ Provides feature importance, SHAP value computation, root cause analysis,
 and human-readable decision explanations for every prediction.
 """
 
+import logging
 from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class ExplainabilityEngine:
@@ -15,9 +18,11 @@ class ExplainabilityEngine:
 
     Every prediction comes with:
     - Feature importance ranking
+    - SHAP value computation (for tree models)
     - Root cause identification
     - Parameter contribution analysis
     - Human-readable decision explanation
+    - What-if scenario analysis
     """
 
     def __init__(self):
@@ -33,18 +38,26 @@ class ExplainabilityEngine:
         """Initialize the explainability engine with a fitted model.
 
         Uses TreeExplainer for tree-based models (most efficient).
+        Falls back to KernelExplainer for non-tree models.
         """
         self._feature_names = feature_names
         try:
             import shap
-            if hasattr(model, "estimators_"):
+            if hasattr(model, "estimators_") or hasattr(model, "get_booster"):
                 self._shap_explainer = shap.TreeExplainer(model)
+                logger.info("Initialized SHAP TreeExplainer")
             else:
-                # Fallback to KernelExplainer for non-tree models
+                # Sample background for KernelExplainer
+                n_background = min(100, len(X_background))
                 self._shap_explainer = shap.KernelExplainer(
-                    model.predict, X_background[:100]
+                    model.predict, X_background[:n_background]
                 )
+                logger.info("Initialized SHAP KernelExplainer (fallback)")
         except ImportError:
+            logger.warning("SHAP not installed — using permutation importance")
+            self._shap_explainer = None
+        except Exception as e:
+            logger.warning(f"SHAP initialization failed: {e}")
             self._shap_explainer = None
 
     def explain_prediction(
@@ -56,19 +69,26 @@ class ExplainabilityEngine:
     ) -> dict[str, Any]:
         """Generate a complete explanation for a prediction.
 
-        Args:
-            model: The fitted ML model
-            features_df: Single-row DataFrame of input features
-            prediction: The model's predicted value
-            target_gsm: The target GSM for the grade
-
-        Returns:
-            Dict with feature importance, root cause, and explanation
+        Returns feature importance, root cause, contributions, risk level,
+        and decision explanation.
         """
         feature_names = features_df.columns.tolist()
         feature_values = features_df.iloc[0].to_dict()
 
-        # Compute feature importance via permutation if SHAP unavailable
+        # Compute SHAP values if explainer is available
+        shap_values = None
+        if self._shap_explainer is not None:
+            try:
+                shap_vals = self._shap_explainer.shap_values(features_df.values)
+                if isinstance(shap_vals, list):
+                    shap_vals = shap_vals[0]
+                shap_values = dict(zip(feature_names, shap_vals[0].tolist()
+                                       if len(shap_vals.shape) > 1
+                                       else shap_vals.tolist()))
+            except Exception as e:
+                logger.debug(f"SHAP computation failed: {e}")
+
+        # Compute feature importance via permutation
         importances = self._compute_permutation_importance(
             model, features_df, prediction
         )
@@ -78,22 +98,33 @@ class ExplainabilityEngine:
             importances.items(), key=lambda x: abs(x[1]), reverse=True
         )
 
-        # Determine root cause
+        # Determine top contributors
+        top_contributors = [
+            {
+                "feature": name,
+                "importance": round(imp, 4),
+                "current_value": round(feature_values.get(name, 0), 2),
+                "direction": "increasing" if imp > 0 else "decreasing",
+            }
+            for name, imp in sorted_features[:8]
+        ]
+
+        # Root cause analysis
         root_cause = self._identify_root_cause(
             sorted_features, feature_values, prediction, target_gsm
         )
 
-        # Build parameter contributions
+        # Parameter contribution analysis
         contributions = self._build_contributions(
             sorted_features, prediction, target_gsm
         )
 
-        # Build decision explanation
+        # Decision explanation
         decision_explanation = self._build_decision_explanation(
             sorted_features, prediction, target_gsm, contributions
         )
 
-        # Determine risk level
+        # Risk assessment
         deviation_pct = abs(prediction - target_gsm) / target_gsm * 100
         if deviation_pct <= 2:
             risk_level = "green"
@@ -103,12 +134,16 @@ class ExplainabilityEngine:
             risk_level = "red"
 
         return {
-            "feature_importance": dict(sorted_features[:8]),
+            "feature_importance": {
+                name: round(imp, 6) for name, imp in sorted_features[:10]
+            },
+            "top_contributors": top_contributors,
+            "shap_values": shap_values,
             "root_cause": root_cause,
-            "parameter_contributions": contributions,
+            "contributions": contributions[:5],
             "decision_explanation": decision_explanation,
             "risk_level": risk_level,
-            "deviation_percentage": round(deviation_pct, 2),
+            "deviation_pct": round(deviation_pct, 2),
             "target_gsm": target_gsm,
             "predicted_gsm": round(prediction, 2),
         }
@@ -119,28 +154,18 @@ class ExplainabilityEngine:
         features_df: pd.DataFrame,
         baseline_prediction: float,
     ) -> dict[str, float]:
-        """Compute feature importance via single-feature permutation."""
+        """Compute permutation-based feature importance."""
+        feature_names = features_df.columns.tolist()
         importances = {}
-        feature_values = features_df.iloc[0].copy()
 
-        for col in features_df.columns:
-            original = feature_values[col]
-            # Perturb the feature by ±10%
+        for i, feat in enumerate(feature_names):
             perturbed = features_df.copy()
-            perturbed[col] = original * (1.1 if original != 0 else 0.1)
-            perturbed_pred = model.predict(perturbed)[0]
-
-            # Also try negative perturbation
-            perturbed2 = features_df.copy()
-            perturbed2[col] = original * (0.9 if original != 0 else -0.1)
-            perturbed_pred2 = model.predict(perturbed2)[0]
-
-            # Average absolute change
-            importance = (
-                abs(perturbed_pred - baseline_prediction)
-                + abs(perturbed_pred2 - baseline_prediction)
-            ) / 2
-            importances[col] = round(importance, 4)
+            perturbed.iloc[0, i] = perturbed.iloc[0, i] * 1.1  # 10% perturbation
+            try:
+                perturbed_pred = float(model.predict(perturbed.values)[0])
+                importances[feat] = abs(perturbed_pred - baseline_prediction)
+            except Exception:
+                importances[feat] = 0.0
 
         return importances
 
@@ -152,32 +177,33 @@ class ExplainabilityEngine:
         target_gsm: float,
     ) -> str:
         """Identify the primary root cause of deviation."""
-        if abs(prediction - target_gsm) / target_gsm < 0.02:
-            return "All parameters within optimal range. No significant deviation detected."
+        if not sorted_features:
+            return "Unable to determine root cause — insufficient data"
 
-        top_3 = sorted_features[:3]
-        causes = []
+        dominant = sorted_features[0]
+        feature_name = dominant[0]
+        importance = dominant[1]
+        current_val = feature_values.get(feature_name, 0)
 
-        param_descriptions = {
-            "machine_speed": "Machine speed",
-            "headbox_pressure": "Headbox pressure (affects fiber distribution)",
-            "dryer_temperature": "Dryer temperature (affects moisture evaporation)",
-            "moisture_content": "Moisture content (affects final paper weight)",
-            "chemical_dosage": "Chemical dosage (affects retention and formation)",
-            "flow_rate": "Stock flow rate (affects fiber deposition)",
+        direction = "higher" if prediction > target_gsm else "lower"
+
+        # Contextual analysis
+        explanations = {
+            "machine_speed": f"faster than optimal speed" if current_val > 800 else f"slower speed affecting formation",
+            "headbox_pressure": f"elevated pressure" if current_val > 2.5 else f"low pressure",
+            "dryer_temperature": f"excessive drying" if current_val > 120 else f"insufficient drying",
+            "moisture_content": f"high moisture" if current_val > 5.5 else f"low moisture",
+            "chemical_dosage": f"overdosing" if current_val > 1.8 else f"underdosing",
+            "flow_rate": f"excessive flow" if current_val > 2500 else f"low flow rate",
         }
 
-        for feat, imp in top_3:
-            if abs(imp) < 0.001:
-                continue
-            desc = param_descriptions.get(feat, feat)
-            value = feature_values.get(feat, 0)
-            causes.append(f"{desc} ({value:.1f}) contributing {imp:.4f} to prediction")
+        context = explanations.get(feature_name, "deviation from optimal range")
 
-        if not causes:
-            return "Multiple small factors combining to cause deviation."
-
-        return "Primary drivers: " + "; ".join(causes) + "."
+        return (
+            f"Primary deviation driver: {feature_name} (importance: {importance:.4f}). "
+            f"The current value of {current_val:.1f} ({context}) is contributing to a "
+            f"{direction} than target GSM of {target_gsm:.1f}."
+        )
 
     def _build_contributions(
         self,
@@ -186,16 +212,14 @@ class ExplainabilityEngine:
         target_gsm: float,
     ) -> list[dict[str, Any]]:
         """Build parameter contribution list."""
-        contributions = []
-        for feat, imp in sorted_features[:6]:
-            direction = "increase" if imp > 0 else "decrease"
-            contributions.append({
-                "parameter": feat,
-                "impact": round(imp, 4),
-                "direction": direction,
-                "absolute_impact": round(abs(imp), 4),
-            })
-        return contributions
+        return [
+            {
+                "feature": name,
+                "contribution": round(imp / target_gsm * 100, 2),
+                "impact": "positive" if imp > 0 else "negative",
+            }
+            for name, imp in sorted_features[:5]
+        ]
 
     def _build_decision_explanation(
         self,
@@ -205,32 +229,34 @@ class ExplainabilityEngine:
         contributions: list[dict[str, Any]],
     ) -> str:
         """Build a human-readable decision explanation."""
-        deviation = prediction - target_gsm
-        deviation_pct = abs(deviation) / target_gsm * 100
+        if not sorted_features:
+            return "Prediction generated with limited feature data"
 
-        if deviation_pct < 1:
-            return (
-                f"The AI predicts a Basis Weight of {prediction:.1f} GSM, "
-                f"which is within the acceptable range of the target ({target_gsm:.1f} GSM). "
-                "No corrective action is required at this time."
-            )
-        elif deviation_pct < 3:
-            direction = "above" if deviation > 0 else "below"
-            return (
-                f"The AI predicts a Basis Weight of {prediction:.1f} GSM, "
-                f"which is slightly {direction} the target of {target_gsm:.1f} GSM "
-                f"(deviation: {deviation_pct:.1f}%). "
-                f"The main contributing factor is {sorted_features[0][0]} with an impact of {abs(sorted_features[0][1]):.3f}. "
-                "Minor adjustments are recommended."
-            )
+        dominant = sorted_features[0]
+        deviation = abs(prediction - target_gsm)
+        deviation_pct = deviation / target_gsm * 100
+
+        parts = [
+            f"Predicted Basis Weight: {prediction:.1f} GSM "
+            f"({deviation_pct:.1f}% from target of {target_gsm:.1f} GSM). "
+        ]
+
+        if deviation_pct <= 1:
+            parts.append("Parameters are within optimal range. ")
+        elif deviation_pct <= 3:
+            parts.append(f"Slight deviation detected. The most influential parameter is "
+                         f"{dominant[0]}. ")
         else:
-            direction = "above" if deviation > 0 else "below"
-            return (
-                f"⚠️ The AI predicts a significant deviation in Basis Weight: "
-                f"{prediction:.1f} GSM vs target {target_gsm:.1f} GSM "
-                f"({deviation_pct:.1f}% {direction} target). "
-                f"The primary root cause is {sorted_features[0][0]} "
-                f"(impact: {abs(sorted_features[0][1]):.3f}). "
-                f"Secondary factors include {sorted_features[1][0]} and {sorted_features[2][0]}. "
-                "Immediate corrective action is strongly recommended."
-            )
+            parts.append(f"Significant deviation detected. Primary factor: {dominant[0]} "
+                         f"(importance: {dominant[1]:.4f}). ")
+
+        if contributions:
+            top_contrib = contributions[0]
+            parts.append(f"Top contributor: {top_contrib['feature']} "
+                         f"({top_contrib['contribution']}% impact). ")
+
+        if deviation_pct > 2:
+            parts.append("Corrective action recommended. Adjust the primary parameter "
+                         "and re-evaluate.")
+
+        return "".join(parts)
