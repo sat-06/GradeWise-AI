@@ -11,7 +11,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.auth import get_current_user
+from app.core.security import get_current_user
 from app.core.config import get_settings
 from app.ml.pipeline.feature_engineering import ALL_FEATURES, CORE_FEATURES, FeatureEngineer
 from app.ml.explainability.explainer import ExplainabilityEngine
